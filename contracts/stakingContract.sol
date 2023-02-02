@@ -5,9 +5,11 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
+import "./interfaces/IMintToken.sol";
 
 
 contract StakingRewards{
+    using SafeERC20 for IMintToken;
     
     struct StakedBalance {
         uint256 amount;
@@ -19,24 +21,28 @@ contract StakingRewards{
     mapping(address => StakedBalance[]) public stakeDetails;
     
     IERC20 public immutable stakingToken;
-    IERC20 public immutable rewardsToken;
+    IMintToken public immutable rewardsToken;
 
     address public owner;
 
-    uint256 public constant lockDuration = 100;
+    uint256 public constant rewardDuration = 86400;
+    uint256 public constant lockDuration = rewardDuration * 28;
 
-    // Duration of rewards to be paid out (in seconds)
-    uint public duration;
-    // Timestamp of when the rewards finish
-    uint public finishAt;
+    mapping(address => bool) public mintAllowed;
+
     // Minimum of last updated time and reward finish time
     uint public updatedAt;
+    
     // Reward to be paid out per second
-    uint public rewardRate;
+    //345600 tokens to be paid out in 86400 seconds 
+    uint public constant rewardRate = 4;
+    
     // Sum of (reward rate * dt * 1e18 / total supply)
     uint public rewardPerTokenStored;
     
     bool firstTime = true;
+    mapping(address => uint256) private _lastWithdrawalTime;
+
 
     uint256 public lastWithdrawTime;
 
@@ -57,14 +63,17 @@ contract StakingRewards{
 
     constructor(address _stakingToken, address _rewardToken) {
         owner = msg.sender;
+        mintAllowed[msg.sender] = true;
         stakingToken = IERC20(_stakingToken);
-        rewardsToken = IERC20(_rewardToken);
+        rewardsToken = IMintToken(_rewardToken);
+        updatedAt = block.timestamp;
+
     }
 
 
     modifier updateReward(address _account) {
         rewardPerTokenStored = rewardPerToken();
-        updatedAt = lastTimeRewardApplicable();
+        updatedAt = block.timestamp;
 
         StakedBalance[] storage bal = stakeDetails[_account];
         uint256 len = stakeDetails[_account].length;
@@ -72,7 +81,6 @@ contract StakingRewards{
             for(uint i=0; i < len; i++){               
                 bal[i].rewardsPerStake = _earned(_account, i, bal[i].amount);
                 bal[i].userRewardPerTokenPaidStake = rewardPerTokenStored;
-
             }
             
         }
@@ -84,22 +92,25 @@ contract StakingRewards{
         require(msg.sender == owner, "not authorized");
         _;
     }
-    modifier coolTime() {
+    modifier coolTime(address _account) {
         if(firstTime){
             firstTime = false;
-            lastWithdrawTime = block.timestamp;
+            _lastWithdrawalTime[_account] = block.timestamp;
         }
-        require(block.timestamp >= (lastWithdrawTime + 5 minutes), "Cooldown time not completed");
+        require(block.timestamp >= (_lastWithdrawalTime[_account] + 5 minutes), "Cooldown time not completed");
 
         _;
     }
-
-    function coolDownPeriodStatus() public view returns(bool) {
-        return (block.timestamp > (lastWithdrawTime + 2 days));
+    modifier addReward() {
+            uint256 timeGap = block.timestamp - lastWithdrawTime;
+            uint256 totalRewardsAdded = rewardRate * 1e18 * timeGap;
+            rewardsToken.mint(address(this), totalRewardsAdded);
+            emit RewardAdded(totalRewardsAdded);            
+        _;
     }
 
-    function lastTimeRewardApplicable() public view returns (uint) {
-        return _min(finishAt, block.timestamp);
+    function coolDownPeriodStatus(address _account) public view returns(bool) {
+        return (block.timestamp > (_lastWithdrawalTime[_account] + 5 minutes));
     }
 
     function rewardPerToken() public view returns (uint) {
@@ -109,7 +120,7 @@ contract StakingRewards{
 
         return
             rewardPerTokenStored +
-            (rewardRate * (lastTimeRewardApplicable() - updatedAt) * 1e18) /
+            (rewardRate * (block.timestamp - updatedAt) * 1e18) /
             totalSupply;
     }
 
@@ -135,7 +146,7 @@ contract StakingRewards{
         emit Staked(msg.sender, _amount);
     }
 
-    function withdraw(uint _amount) external updateReward(msg.sender) coolTime {
+    function withdraw(uint _amount) external updateReward(msg.sender) coolTime(msg.sender) addReward{
         require(_amount > 0, "amount = 0");
         require(balanceOf[msg.sender] > _amount, "Low Balance");       
         uint256 totalClaimableReward;
@@ -155,7 +166,8 @@ contract StakingRewards{
                 percentage = 1e18;
             }
             uint256 penaltyRewards;
-            uint256 rewardsAmount = bal[i].rewardsPerStake;          
+            uint256 rewardsAmount = bal[i].rewardsPerStake;
+            uint256 timeStaked = bal[i].unlockTime - block.timestamp;                     
             if(bal[i].unlockTime > block.timestamp){
                 penaltyRewards = (rewardsAmount * percentage)/1e18;
                 totalPenaltyReward += penaltyRewards;
@@ -190,6 +202,7 @@ contract StakingRewards{
                 );
         }
         
+        _lastWithdrawalTime[msg.sender] = block.timestamp;
         lastWithdrawTime = block.timestamp;
         emit Withdrawn(msg.sender, _amount);
         
@@ -205,7 +218,7 @@ contract StakingRewards{
     }
 
 
-    function claim() public updateReward(msg.sender) {
+    function claim() public updateReward(msg.sender) addReward {
         StakedBalance[] storage bal = stakeDetails[msg.sender];
         uint256 totalAccumlatedRewards;
             for (uint j = 0; j < bal.length; j++) {
@@ -250,53 +263,9 @@ contract StakingRewards{
             stakeDetails[_userAddress][_index].userRewardPerTokenPaidStake
         );
     }
-
-    
+   
     function getStakeCount(address _account) external view returns (uint256) {
         return stakeDetails[_account].length;
     }
 
-
-    function setRewardsDuration(uint _duration) external onlyOwner {
-        require(finishAt < block.timestamp, "reward duration not finished");
-        duration = _duration;
-    }
-
-    function notifyRewardAmount(
-        uint256 _rewardAmount
-    ) external onlyOwner updateReward(address(0)) {
-        require(_rewardAmount > 0, "No reward");
-        rewardsToken.transferFrom(
-            msg.sender,
-            address(this),
-            _rewardAmount
-        );
-        _notifyReward(_rewardAmount);
-        emit RewardAdded(_rewardAmount);
-    }
-
-
-    function _notifyReward(
-        uint _amount
-    ) internal {
-        if (block.timestamp >= finishAt) {
-            rewardRate = _amount / duration;
-        } else {
-            uint remainingRewards = (finishAt - block.timestamp) * rewardRate;
-            rewardRate = (_amount + remainingRewards) / duration;
-        }
-
-        require(rewardRate > 0, "reward rate = 0");
-        require(
-            rewardRate * duration <= rewardsToken.balanceOf(address(this)),
-            "reward amount > balance"
-        );
-
-        finishAt = block.timestamp + duration;
-        updatedAt = block.timestamp;
-    }
-
-    function _min(uint x, uint y) private pure returns (uint) {
-        return x <= y ? x : y;
-    }
 }
