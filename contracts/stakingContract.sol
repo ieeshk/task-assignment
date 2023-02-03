@@ -46,7 +46,7 @@ contract StakingRewards{
     mapping(address => bool) public isWithdrawn;
 
     mapping(address => uint256) private _lastWithdrawalTime;
-    uint256 public constant coolDownPeriod = 5 minutes;
+    uint256 public constant coolDownPeriod = 2 days;
 
     uint256 public lastWithdrawTime;
 
@@ -91,6 +91,12 @@ contract StakingRewards{
         require(msg.sender == owner, "not authorized");
         _;
     }
+
+    modifier checkTime(address _account){
+        require(block.timestamp > _lastWithdrawalTime[_account], "CoolDown time not completed");
+
+        _;
+    }
     // modifier coolTime(address _account) {
     //     if(firstTime){
     //         firstTime = false;
@@ -110,20 +116,24 @@ contract StakingRewards{
     // }
 
     
-    function coolDownPeriodStatus(address _account) public returns(bool) {
-        uint256 currentTime;
-        if(isWithdrawn[_account] == false){
-        currentTime = block.timestamp;
-        _lastWithdrawalTime[_account] = currentTime + coolDownPeriod;
-        isWithdrawn[_account] = true;
-        }
-        //_lastWithdrawalTime[_account] = currentTime + coolDownPeriod;
-        if(block.timestamp > _lastWithdrawalTime[_account]){
-            return true;
-        }
-        else {
-            return false;
-        }
+       function _startCooldownTimer(address _account) internal {
+        _lastWithdrawalTime[_account] = block.timestamp + coolDownPeriod;
+       }
+
+    // function coolDownPeriodStatus(address _account) public returns(bool) {
+    //     uint256 currentTime;
+    //     if(isWithdrawn[_account] == false){
+    //     currentTime = block.timestamp;
+    //     _lastWithdrawalTime[_account] = currentTime + coolDownPeriod;
+    //     isWithdrawn[_account] = true;
+    //     }
+    //     //_lastWithdrawalTime[_account] = currentTime + coolDownPeriod;
+    //     if(block.timestamp > _lastWithdrawalTime[_account]){
+    //         return true;
+    //     }
+    //     else {
+    //         return false;
+    //     }
 
         // uint256 currentTime;      
         // //address to timeStamp
@@ -137,7 +147,9 @@ contract StakingRewards{
 
         // //_lastWithdrawalTime[_account] = _time;
         // return (block.timestamp > (currentTime + 5 minutes));
-    }
+    //}
+
+
 
     function rewardPerToken() public view returns (uint) {
         if (totalSupply == 0) {
@@ -169,10 +181,10 @@ contract StakingRewards{
         emit Staked(msg.sender, _amount);
     }
 
-    function withdraw(uint _amount) external updateReward(msg.sender){
+    function withdraw(uint _amount) external updateReward(msg.sender) checkTime(msg.sender){
         require(_amount > 0, "amount = 0");
         require(balanceOf[msg.sender] > _amount, "Low Balance");
-        if(coolDownPeriodStatus(msg.sender)){       
+        _startCooldownTimer(msg.sender);   
         uint256 totalClaimableReward;
         uint256 totalPenaltyReward;
         uint256 percentage;
@@ -234,7 +246,6 @@ contract StakingRewards{
         // _lastWithdrawalTime[msg.sender] = block.timestamp;
         // lastWithdrawTime = block.timestamp;
         emit Withdrawn(msg.sender, _amount);
-        }
         
     }
 

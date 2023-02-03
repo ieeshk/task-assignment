@@ -7,50 +7,50 @@ import { BigNumber as BN } from "bignumber.js";
 import exp from "constants";
 
 async function forward(seconds: any) {
-const lastTimestamp = (await waffle.provider.getBlock("latest")).timestamp;
-await waffle.provider.send("evm_setNextBlockTimestamp", [
-lastTimestamp + seconds,
-]);
-await waffle.provider.send("evm_mine", []);
+  const lastTimestamp = (await waffle.provider.getBlock("latest")).timestamp;
+  await waffle.provider.send("evm_setNextBlockTimestamp", [
+  lastTimestamp + seconds,
+  ]);
+  await waffle.provider.send("evm_mine", []);
 }
 
 describe("Staking Test Cases", () => {
-let owner: SignerWithAddress;
-let user1: SignerWithAddress;
-let stakingContract: ContractFactory;
-let StakingToken: ContractFactory;
-let RewardToken: ContractFactory;
-let stakingToken: Contract;
-let rewardToken: Contract;
-let stakingPool: Contract;
-let stakeAmount: BigNumber;
-let transferAmount: BigNumber;
-let approvalAmount: BigNumber;
-let rewardAmount: BigNumber;
-let penaltyRewards: BigInt;
+    let owner: SignerWithAddress;
+    let user1: SignerWithAddress;
+    let stakingContract: ContractFactory;
+    let StakingToken: ContractFactory;
+    let RewardToken: ContractFactory;
+    let stakingToken: Contract;
+    let rewardToken: Contract;
+    let stakingPool: Contract;
+    let stakeAmount: BigNumber;
+    let transferAmount: BigNumber;
+    let approvalAmount: BigNumber;
+    let rewardAmount: BigNumber;
+    let penaltyRewards: BigInt;
 describe("Reward testcase", () => {
-beforeEach(async () => {
-[owner, user1] = await ethers.getSigners();
-StakingToken = await ethers.getContractFactory("DOTToken", owner);
-stakingToken = await StakingToken.deploy();
-stakingToken.deployed();
-RewardToken = await ethers.getContractFactory("DONUTToken", owner);
-rewardToken = await RewardToken.deploy();
-rewardToken.deployed();
-stakingContract = await ethers.getContractFactory("StakingRewards", owner);
-stakingPool = await stakingContract.deploy(stakingToken.address, rewardToken.address);
-stakingPool.deployed();
-transferAmount = BigNumber.from("1000000000000000000000");
-rewardAmount = BigNumber.from("100000000000000000000");
-stakeAmount = ethers.utils.parseEther("100");
-approvalAmount = BigNumber.from("1000000000000000000000000000000000000");
-await stakingToken
-.connect(owner)
-.approve(stakingPool.address, approvalAmount);
-await rewardToken
-.connect(owner)
-.approve(stakingPool.address, approvalAmount);
-});
+    beforeEach(async () => {
+    [owner, user1] = await ethers.getSigners();
+    StakingToken = await ethers.getContractFactory("DOTToken", owner);
+    stakingToken = await StakingToken.deploy();
+    stakingToken.deployed();
+    RewardToken = await ethers.getContractFactory("DONUTToken", owner);
+    rewardToken = await RewardToken.deploy();
+    rewardToken.deployed();
+    stakingContract = await ethers.getContractFactory("StakingRewards", owner);
+    stakingPool = await stakingContract.deploy(stakingToken.address, rewardToken.address);
+    stakingPool.deployed();
+    transferAmount = BigNumber.from("1000000000000000000000");
+    rewardAmount = BigNumber.from("100000000000000000000");
+    stakeAmount = ethers.utils.parseEther("100");
+    approvalAmount = BigNumber.from("1000000000000000000000000000000000000");
+    await stakingToken
+    .connect(owner)
+    .approve(stakingPool.address, approvalAmount);
+    await rewardToken
+    .connect(owner)
+    .approve(stakingPool.address, approvalAmount);
+    });
 it("Stake tokens and check balance ", async function () {
     
     const rewardRate = await stakingPool.connect(owner).rewardRate();
@@ -109,11 +109,11 @@ it("Check cooldown period ", async function () {
 
     await stakingPool.connect(owner).stake(transferAmount);
 
-    await stakingPool.connect(owner).withdraw(transferAmount);
+    await expect(stakingPool.connect(owner).withdraw(transferAmount)).to.be.revertedWith("CoolDown time not completed");
     
     //wait for cooldown period to complete
 
-    await forward(10000);
+    await forward(1000000000000);
 
     await stakingPool.connect(owner).withdraw(transferAmount);
 
