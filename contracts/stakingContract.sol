@@ -117,7 +117,11 @@ contract StakingRewards{
 
     
        function _startCooldownTimer(address _account) internal {
-        _lastWithdrawalTime[_account] = block.timestamp + coolDownPeriod;
+        if(isWithdrawn[_account] == false){
+         _lastWithdrawalTime[_account] = block.timestamp + coolDownPeriod;
+         isWithdrawn[_account] = true;
+        }
+        
        }
 
     // function coolDownPeriodStatus(address _account) public returns(bool) {
@@ -243,6 +247,7 @@ contract StakingRewards{
                 );
         }
         
+        isWithdrawn[msg.sender] = false;
         // _lastWithdrawalTime[msg.sender] = block.timestamp;
         // lastWithdrawTime = block.timestamp;
         emit Withdrawn(msg.sender, _amount);
