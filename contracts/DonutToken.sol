@@ -6,10 +6,9 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract DONUTToken is ERC20, Ownable {
     constructor() ERC20("DONUT token", "DONUT") {
-        _mint(msg.sender, 345600 * 10 ** decimals());
     }
 
-    function mint(address to, uint256 amount) public onlyOwner {
+    function mint(address to, uint256 amount) public {
         _mint(to, amount);
     }
 }

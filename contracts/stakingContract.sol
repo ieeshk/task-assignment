@@ -6,6 +6,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 import "./interfaces/IMintToken.sol";
+import "hardhat/console.sol";
 
 
 contract StakingRewards{
@@ -14,10 +15,10 @@ contract StakingRewards{
     struct StakedBalance {
         uint256 amount;
         uint256 unlockTime;
-        uint256 rewardsPerStake;
-        uint256 userRewardPerTokenPaidStake;
     }
 
+    mapping(address => uint) public userRewardPerTokenPaid;
+    mapping(address => uint) public rewards;
     mapping(address => StakedBalance[]) public stakeDetails;
     
     IERC20 public immutable stakingToken;
@@ -35,14 +36,17 @@ contract StakingRewards{
     
     // Reward to be paid out per second
     //345600 tokens to be paid out in 86400 seconds 
-    uint public constant rewardRate = 4;
+    uint public constant rewardRate = 4 * 1e18;
     
     // Sum of (reward rate * dt * 1e18 / total supply)
     uint public rewardPerTokenStored;
     
-    bool firstTime = true;
-    mapping(address => uint256) private _lastWithdrawalTime;
+    //bool firstTime = true;
+    
+    mapping(address => bool) public isWithdrawn;
 
+    mapping(address => uint256) private _lastWithdrawalTime;
+    uint256 public constant coolDownPeriod = 5 minutes;
 
     uint256 public lastWithdrawTime;
 
@@ -64,9 +68,9 @@ contract StakingRewards{
     constructor(address _stakingToken, address _rewardToken) {
         owner = msg.sender;
         mintAllowed[msg.sender] = true;
+        mintAllowed[(address(this))] = true;
         stakingToken = IERC20(_stakingToken);
         rewardsToken = IMintToken(_rewardToken);
-        updatedAt = block.timestamp;
 
     }
 
@@ -74,14 +78,9 @@ contract StakingRewards{
     modifier updateReward(address _account) {
         rewardPerTokenStored = rewardPerToken();
         updatedAt = block.timestamp;
-
-        StakedBalance[] storage bal = stakeDetails[_account];
-        uint256 len = stakeDetails[_account].length;
-        if (_account != address(0)) {
-            for(uint i=0; i < len; i++){               
-                bal[i].rewardsPerStake = _earned(_account, i, bal[i].amount);
-                bal[i].userRewardPerTokenPaidStake = rewardPerTokenStored;
-            }
+        if (_account != address(0)) {         
+            rewards[_account] = earned(_account);
+            userRewardPerTokenPaid[_account]= rewardPerTokenStored;
             
         }
 
@@ -92,32 +91,58 @@ contract StakingRewards{
         require(msg.sender == owner, "not authorized");
         _;
     }
-    modifier coolTime(address _account) {
-        if(firstTime){
-            firstTime = false;
-            _lastWithdrawalTime[_account] = block.timestamp;
+    // modifier coolTime(address _account) {
+    //     if(firstTime){
+    //         firstTime = false;
+    //         _lastWithdrawalTime[_account] = block.timestamp;
+    //     }
+    //     require(block.timestamp >= (_lastWithdrawalTime[_account] + 5 minutes), "Cooldown time not completed");
+
+    //     _;
+    // }
+
+    // modifier addReward() {
+    //         uint256 timeGap = block.timestamp - lastWithdrawTime;
+    //         uint256 totalRewardsAdded = rewardRate * 1e18 * timeGap;
+    //         rewardsToken.mint(address(this), totalRewardsAdded);
+    //         emit RewardAdded(totalRewardsAdded);            
+    //     _;
+    // }
+
+    
+    function coolDownPeriodStatus(address _account) public returns(bool) {
+        uint256 currentTime;
+        if(isWithdrawn[_account] == false){
+        currentTime = block.timestamp;
+        _lastWithdrawalTime[_account] = currentTime + coolDownPeriod;
+        isWithdrawn[_account] = true;
         }
-        require(block.timestamp >= (_lastWithdrawalTime[_account] + 5 minutes), "Cooldown time not completed");
+        //_lastWithdrawalTime[_account] = currentTime + coolDownPeriod;
+        if(block.timestamp > _lastWithdrawalTime[_account]){
+            return true;
+        }
+        else {
+            return false;
+        }
 
-        _;
-    }
-    modifier addReward() {
-            uint256 timeGap = block.timestamp - lastWithdrawTime;
-            uint256 totalRewardsAdded = rewardRate * 1e18 * timeGap;
-            rewardsToken.mint(address(this), totalRewardsAdded);
-            emit RewardAdded(totalRewardsAdded);            
-        _;
-    }
+        // uint256 currentTime;      
+        // //address to timeStamp
+        // //current timestamp - last timestamp > cooldownPeriod && isWithdrawn
+        // if(_lastWithdrawalTime[_account] == 0){
+        //     currentTime = block.timestamp;
+        // }
+        //  _lastWithdrawalTime[_account] = block.timestamp;
+        //  isWithdrawn[_account] = true;
+        // if(block.timestamp - ) 
 
-    function coolDownPeriodStatus(address _account) public view returns(bool) {
-        return (block.timestamp > (_lastWithdrawalTime[_account] + 5 minutes));
+        // //_lastWithdrawalTime[_account] = _time;
+        // return (block.timestamp > (currentTime + 5 minutes));
     }
 
     function rewardPerToken() public view returns (uint) {
         if (totalSupply == 0) {
             return rewardPerTokenStored;
         }
-
         return
             rewardPerTokenStored +
             (rewardRate * (block.timestamp - updatedAt) * 1e18) /
@@ -133,8 +158,6 @@ contract StakingRewards{
             StakedBalance storage newStake = bal.push();
             newStake.amount = _amount;
             newStake.unlockTime = unlockTime;
-            newStake.rewardsPerStake = 0;
-            newStake.userRewardPerTokenPaidStake = rewardPerTokenStored;
         }
         else{
             bal[index-1].amount = bal[index-1].amount + _amount;
@@ -146,9 +169,10 @@ contract StakingRewards{
         emit Staked(msg.sender, _amount);
     }
 
-    function withdraw(uint _amount) external updateReward(msg.sender) coolTime(msg.sender) addReward{
+    function withdraw(uint _amount) external updateReward(msg.sender){
         require(_amount > 0, "amount = 0");
-        require(balanceOf[msg.sender] > _amount, "Low Balance");       
+        require(balanceOf[msg.sender] > _amount, "Low Balance");
+        if(coolDownPeriodStatus(msg.sender)){       
         uint256 totalClaimableReward;
         uint256 totalPenaltyReward;
         uint256 percentage;
@@ -160,22 +184,23 @@ contract StakingRewards{
             }
             uint256 stakedAmount = bal[i].amount;
             if(stakedAmount >= remaining){
-               percentage = (stakedAmount * 1e18)/remaining; 
+               percentage = (stakedAmount * 1e18)/remaining;
             }
             else{
                 percentage = 1e18;
             }
             uint256 penaltyRewards;
-            uint256 rewardsAmount = bal[i].rewardsPerStake;
-            uint256 timeStaked = bal[i].unlockTime - block.timestamp;                     
+            uint256 rewardsAmount = rewards[msg.sender];
+            uint256 timeStaked = bal[i].unlockTime - block.timestamp;
+            uint256 stakedTimeRewards = rewardRate * timeStaked;                    
             if(bal[i].unlockTime > block.timestamp){
                 penaltyRewards = (rewardsAmount * percentage)/1e18;
                 totalPenaltyReward += penaltyRewards;
-                bal[i].rewardsPerStake = rewardsAmount - penaltyRewards;
+                rewards[msg.sender] = rewardsAmount - penaltyRewards;
             }
             else{
                 totalClaimableReward += rewardsAmount;
-                bal[i].rewardsPerStake = 0;
+                rewards[msg.sender] = 0;
             }
             if(remaining < stakedAmount){
                 bal[i].amount -= remaining;
@@ -187,14 +212,18 @@ contract StakingRewards{
                 delete bal[i];
             }
         }
+       
         balanceOf[msg.sender] -= _amount;
         totalSupply -= _amount;
         stakingToken.transfer(msg.sender, _amount);
         if(totalPenaltyReward>0){
-            rewardsToken.transfer(owner, totalPenaltyReward);
+            rewardsToken.mint(owner, totalPenaltyReward);
+            console.log("rewards minted", totalPenaltyReward);
+            //rewardsToken.transfer(owner, totalPenaltyReward);
         }
         if(totalClaimableReward>0){
-            rewardsToken.transfer(msg.sender, totalClaimableReward);
+            //rewardsToken.transfer(msg.sender, totalClaimableReward);
+            rewardsToken.mint(msg.sender, totalClaimableReward);
             emit RewardPaid(
                     msg.sender,
                     address(rewardsToken),
@@ -202,38 +231,29 @@ contract StakingRewards{
                 );
         }
         
-        _lastWithdrawalTime[msg.sender] = block.timestamp;
-        lastWithdrawTime = block.timestamp;
+        // _lastWithdrawalTime[msg.sender] = block.timestamp;
+        // lastWithdrawTime = block.timestamp;
         emit Withdrawn(msg.sender, _amount);
+        }
         
     }
 
     
-    function _earned(address _account, uint256 _index, uint256 _balance) internal view returns (uint) {
-        StakedBalance[] storage bal = stakeDetails[_account];
+    function earned(address _account) public view returns (uint) {
         return
-            ((_balance *
-                (rewardPerToken() - bal[_index].userRewardPerTokenPaidStake)) / 1e18) +
-            bal[_index].rewardsPerStake;
+            ((balanceOf[_account] *
+                (rewardPerToken() - userRewardPerTokenPaid[_account])) / 1e18) +
+            rewards[_account];
     }
 
-
-    function claim() public updateReward(msg.sender) addReward {
-        StakedBalance[] storage bal = stakeDetails[msg.sender];
-        uint256 totalAccumlatedRewards;
-            for (uint j = 0; j < bal.length; j++) {
-                if (bal[j].unlockTime > block.timestamp) {
-                    break;
-                }
-                totalAccumlatedRewards += bal[j].rewardsPerStake;
-                bal[j].rewardsPerStake = 0;
-            }
+    function claim() public updateReward(msg.sender){
+        uint256 totalAccumlatedRewards = rewards[msg.sender];               
             if (totalAccumlatedRewards > 0) {
-                rewardsToken.transfer(
+                rewards[msg.sender] = 0;
+                rewardsToken.mint(
                     msg.sender,
                     totalAccumlatedRewards
                 );
-                totalAccumlatedRewards = 0;
                 emit RewardPaid(
                     msg.sender,
                     address(rewardsToken),
@@ -251,16 +271,12 @@ contract StakingRewards{
         view
         returns (
             uint256 _stakedAmount,
-            uint256 _unlockTime,
-            uint256 _rewardAmounts,
-            uint256 _userRewardPerTokenPaid
+            uint256 _unlockTime
         )
     {
         return (
             stakeDetails[_userAddress][_index].amount,
-            stakeDetails[_userAddress][_index].unlockTime,
-            stakeDetails[_userAddress][_index].rewardsPerStake,
-            stakeDetails[_userAddress][_index].userRewardPerTokenPaidStake
+            stakeDetails[_userAddress][_index].unlockTime
         );
     }
    
