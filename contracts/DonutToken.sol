@@ -8,7 +8,7 @@ contract DONUTToken is ERC20, Ownable {
     constructor() ERC20("DONUT token", "DONUT") {
     }
 
-    function mint(address to, uint256 amount) public {
+    function mint(address to, uint256 amount) public onlyOwner{
         _mint(to, amount);
     }
 }

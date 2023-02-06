@@ -50,7 +50,9 @@ describe("Reward testcase", () => {
     await rewardToken
     .connect(owner)
     .approve(stakingPool.address, approvalAmount);
+    await rewardToken.connect(owner).transferOwnership(stakingPool.address);
     });
+    
 it("Stake tokens and check balance ", async function () {
     
     const rewardRate = await stakingPool.connect(owner).rewardRate();

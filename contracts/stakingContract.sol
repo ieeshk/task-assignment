@@ -54,6 +54,8 @@ contract StakingRewards{
     uint public totalSupply;
     // User address => staked amount
     mapping(address => uint) public balanceOf;
+    mapping(address => uint) public lastStake;
+    mapping(address => uint) public lastUnlockedStake;
 
     event Staked(address indexed user, uint256 amount);
     event Withdrawn(address indexed user, uint256 amount);
@@ -121,7 +123,6 @@ contract StakingRewards{
          _lastWithdrawalTime[_account] = block.timestamp + coolDownPeriod;
          isWithdrawn[_account] = true;
         }
-        
        }
 
     // function coolDownPeriodStatus(address _account) public returns(bool) {
@@ -165,6 +166,30 @@ contract StakingRewards{
             totalSupply;
     }
 
+    function simpleStake(uint _amount) external updateReward(msg.sender) {
+        require(_amount > 0, "amount = 0");
+        // StakedBalance[] storage bal = stakeDetails[msg.sender];
+        // uint256 unlockTime = block.timestamp + lockDuration;
+        // uint index = stakeDetails[msg.sender].length;
+        // if(index == 0 || bal[index-1].unlockTime < unlockTime){
+        //     StakedBalance storage newStake = bal.push();
+        //     newStake.amount = _amount;
+        //     newStake.unlockTime = unlockTime;
+        // }
+        // else{
+        //     bal[index-1].amount = bal[index-1].amount + _amount;
+        // }
+        stakingToken.transferFrom(msg.sender, address(this), _amount);
+        lastStake[msg.sender] = block.timestamp;
+        lastUnlockedStake[msg.sender] = block.timestamp + lockDuration;
+        balanceOf[msg.sender] += _amount;
+        totalSupply += _amount;
+
+        emit Staked(msg.sender, _amount);
+    }
+
+
+
     function stake(uint _amount) external updateReward(msg.sender) {
         require(_amount > 0, "amount = 0");
         StakedBalance[] storage bal = stakeDetails[msg.sender];
@@ -184,11 +209,107 @@ contract StakingRewards{
 
         emit Staked(msg.sender, _amount);
     }
+    
+    function simpleWithdraw(uint256 _amount) external updateReward(msg.sender){
+        require(_amount > 0, "amount = 0");
+        require(balanceOf[msg.sender] > _amount, "Low Balance");
+        _startCooldownTimer(msg.sender);
+        require(block.timestamp > _lastWithdrawalTime[msg.sender], "Timer not completed");   
+        uint256 percentage;
+        uint256 lastStakeTime = lastStake[msg.sender];
+        uint256 totalStakeBalance = balanceOf[msg.sender];
+        if((lastStakeTime + lockDuration) > block.timestamp){
+            //if last stake is locked
+            uint256 timeStaked = block.timestamp - lastStakeTime;
+            percentage = (_amount * timeStaked)/lastUnlockedStake[msg.sender];
+            uint256 remaining = _amount - percentage;
+            stakingToken.transfer(owner, percentage);
+            stakingToken.transfer(msg.sender, remaining);
+
+        }
+        else{
+            //if last stake is also unlocked
+            stakingToken.transfer(msg.sender, _amount);
+        } 
+        balanceOf[msg.sender] -= _amount;
+        totalSupply -= _amount;
+       
+        isWithdrawn[msg.sender] = false;
+        _lastWithdrawalTime[msg.sender] = 0;
+        emit Withdrawn(msg.sender, _amount);
+
+
+    }
+
+    function withdrawWithoutRewards(uint256 _amount) external updateReward(msg.sender) checkTime(msg.sender){
+        require(_amount > 0, "amount = 0");
+        require(balanceOf[msg.sender] > _amount, "Low Balance");
+        _startCooldownTimer(msg.sender);
+        require(block.timestamp > _lastWithdrawalTime[msg.sender], "Timer not completed");   
+        uint256 totalClaimableAmount;
+        uint256 totalPenaltyAmount;
+        uint256 percentage;
+        uint256 remaining = _amount;
+        StakedBalance[] storage bal = stakeDetails[msg.sender];
+        for(uint i=0; i< bal.length; i++){
+            uint256 timeStaked = bal[i].unlockTime - block.timestamp;
+            uint256 stakedAmount = bal[i].amount;
+            if(remaining == 0){
+                break;
+            }
+            if(stakedAmount >= remaining){
+               percentage = (stakedAmount * 1e18)/remaining;
+            }
+            else{
+                percentage = 1e18;
+            }
+            
+            if(bal[i].unlockTime > block.timestamp){
+                //locked 
+                uint256 calPenalty;
+                if(stakedAmount >= remaining){
+                    calPenalty = (timeStaked * percentage)/(bal[i].unlockTime * 1e18);
+                    totalPenaltyAmount += calPenalty;
+                }
+                       
+            }
+            else{
+                totalClaimableAmount += percentage/1e18;
+            }  
+
+
+            if(remaining < stakedAmount){
+                bal[i].amount -= remaining;
+                remaining = 0;
+                break;
+                }
+            else {
+                remaining -= stakedAmount;
+                delete bal[i];
+            }      
+        }
+        balanceOf[msg.sender] -= (totalClaimableAmount + totalPenaltyAmount);
+        totalSupply -= (totalClaimableAmount + totalPenaltyAmount);
+        if(totalPenaltyAmount>0){
+            stakingToken.transfer(owner, totalPenaltyAmount);           
+            
+        }
+        if(totalClaimableAmount>0){    
+            stakingToken.transfer(msg.sender, totalClaimableAmount);
+        }
+       
+        isWithdrawn[msg.sender] = false;
+        _lastWithdrawalTime[msg.sender] = 0;
+        emit Withdrawn(msg.sender, _amount);
+
+    }
+
 
     function withdraw(uint _amount) external updateReward(msg.sender) checkTime(msg.sender){
         require(_amount > 0, "amount = 0");
         require(balanceOf[msg.sender] > _amount, "Low Balance");
-        _startCooldownTimer(msg.sender);   
+        _startCooldownTimer(msg.sender);
+        require(block.timestamp > _lastWithdrawalTime[msg.sender], "Timer not completed");   
         uint256 totalClaimableReward;
         uint256 totalPenaltyReward;
         uint256 percentage;
@@ -248,7 +369,7 @@ contract StakingRewards{
         }
         
         isWithdrawn[msg.sender] = false;
-        // _lastWithdrawalTime[msg.sender] = block.timestamp;
+        _lastWithdrawalTime[msg.sender] = 0;
         // lastWithdrawTime = block.timestamp;
         emit Withdrawn(msg.sender, _amount);
         
