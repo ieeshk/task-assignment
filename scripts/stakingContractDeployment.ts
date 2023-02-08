@@ -6,11 +6,15 @@ async function main() {
   const dotToken = await DotToken.deploy();
   
   await dotToken.deployed();
+  
+  console.log("DotToken contract address: ", dotToken.address);
 
   const DonutToken = await hre.ethers.getContractFactory("DONUTToken");
   const donutToken = await DonutToken.deploy();
 
   await donutToken.deployed();
+  
+  console.log("DonutToken contract address: ", donutToken.address);
 
   const StakingPool = await hre.ethers.getContractFactory("StakingRewardsNew");
 

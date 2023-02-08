@@ -139,6 +139,7 @@ it("Stake tokens, then withdraw & under with penalty", async function () {
     const balanceReceivedByUser = await stakingToken.connect(user1).balanceOf(user1.address);
     //console.log("balance received by user", balanceReceivedByUser);
 
+    
     //owner received some percentage tokens since user withdraws within penalty period
     expect(ownerBalanceAfterWithdraw).to.be.greaterThan(0);
     

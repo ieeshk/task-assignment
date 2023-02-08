@@ -4,6 +4,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "./interfaces/IMintToken.sol";
+import "./interfaces/IUniswapRouter.sol";
 
 contract StakingRewardsNew is ReentrancyGuard{
     using SafeERC20 for IMintToken;
@@ -12,6 +13,9 @@ contract StakingRewardsNew is ReentrancyGuard{
     IMintToken public immutable rewardsToken;
 
     address public owner;
+    
+    address private _wethAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+    address private _routerAddress = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
 
     uint256 public constant rewardDuration = 86400;
     uint256 public constant lockDuration = rewardDuration * 28;
@@ -164,6 +168,69 @@ contract StakingRewardsNew is ReentrancyGuard{
                     totalAccumlatedRewards
                 );
             }
+    }
+
+    /**
+     * 
+     * @notice User can swap Eth for staking Token
+     */
+    function buyDotToken(
+        uint256 _amount
+    ) external payable returns (uint amountOut) {
+        require(msg.value >0, "infsufficient eth value");
+        address[] memory path;
+        path = new address[](2);
+        path[0] = _wethAddress;
+        path[1] = address(stakingToken);
+
+        uint[] memory _amountOutMin = IUniswapV2Router(_routerAddress)
+            .getAmountsOut(_amount, path);
+        
+        //consider slippage    
+        uint256 amountOutMin = (_amountOutMin[1] * 97) / 100;
+
+        uint256[] memory amounts = IUniswapV2Router(_routerAddress)
+            .swapExactETHForTokens{value: _amount}(
+            amountOutMin,
+            path,
+            msg.sender,
+            block.timestamp + 100
+        );
+
+        return amounts[1];
+    }
+
+    /**
+     * @notice Function swaps staking token for Eth, considering user has some staking token
+     * @param _amount amount of staking tokens User want to sell
+     */
+    function sellDotToken(
+        uint256 _amount
+    ) external returns (uint amountOut) {
+        require(_amount > 0, "Enter a positive token Amount");
+
+        IERC20(stakingToken).transferFrom(msg.sender, address(this), _amount);
+        IERC20(stakingToken).approve(_routerAddress, _amount);
+        
+        address[] memory path;
+        path = new address[](2);
+        path[0] = address(stakingToken);
+        path[1] = _wethAddress;
+
+        uint[] memory _amountOutMin = IUniswapV2Router(_routerAddress)
+            .getAmountsOut(_amount, path);
+        
+        //consider slippage    
+        uint256 amountOutMin = (_amountOutMin[1] * 97) / 100;
+
+        uint256[] memory amounts = IUniswapV2Router(_routerAddress).swapExactTokensForETH(
+            _amount, 
+            amountOutMin, 
+            path, 
+            msg.sender, 
+            block.timestamp + 100);
+
+        return amounts[1];
     }
 
     /**
