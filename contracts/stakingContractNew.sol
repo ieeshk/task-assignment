@@ -2,12 +2,10 @@
 pragma solidity ^0.8;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/utils/math/Math.sol";
 import "./interfaces/IMintToken.sol";
 
-contract StakingRewards{
+contract StakingRewardsNew is ReentrancyGuard{
     using SafeERC20 for IMintToken;
         
     IERC20 public immutable stakingToken;
@@ -18,7 +16,6 @@ contract StakingRewards{
     uint256 public constant rewardDuration = 86400;
     uint256 public constant lockDuration = rewardDuration * 28;
 
-    mapping(address => bool) public mintAllowed;
 
     // Minimum of last updated time and reward finish time
     uint public updatedAt;
@@ -29,18 +26,16 @@ contract StakingRewards{
     
     // Sum of (reward rate * dt * 1e18 / total supply)
     uint public rewardPerTokenStored;
-    
-    mapping(address => bool) public isWithdrawn;
 
-    mapping(address => uint256) private _lastWithdrawalTime;
+    mapping(address => uint256) private _coolDownTime;
 
     mapping(address => uint) public balanceOf;
     mapping(address => uint) public lastStake;
-    mapping(address => uint) public lastUnlockedStake;
+    
     mapping(address => uint) public userRewardPerTokenPaid;
     mapping(address => uint) public rewards;
     
-    uint256 public constant coolDownPeriod = 2 days;
+    uint256 public constant coolDownPeriod = 5 minutes;
 
     // Total supply
     uint public totalSupply;
@@ -53,12 +48,11 @@ contract StakingRewards{
         uint256 reward
     );
     event RewardAdded(uint256 rewardAmount);
+    event Cooldown(address user);
 
 
     constructor(address _stakingToken, address _rewardToken) {
         owner = msg.sender;
-        mintAllowed[msg.sender] = true;
-        mintAllowed[(address(this))] = true;
         stakingToken = IERC20(_stakingToken);
         rewardsToken = IMintToken(_rewardToken);
 
@@ -81,33 +75,28 @@ contract StakingRewards{
         require(msg.sender == owner, "not authorized");
         _;
     }
-
+   
 
     /**
-     * @notice It returns reward Per token value
+     * @notice set cooldown timer first before withdrawal
      */
-    function rewardPerToken() public view returns (uint) {
-        if (totalSupply == 0) {
-            return rewardPerTokenStored;
-        }
-        return
-            rewardPerTokenStored +
-            (rewardRate * (block.timestamp - updatedAt) * 1e18) /
-            totalSupply;
-    }
+    function cooldown() external {
+    require(balanceOf[msg.sender] != 0, 'No tokens staked');
+    _coolDownTime[msg.sender] = block.timestamp;
+
+    emit Cooldown(msg.sender);
+   }
 
     /**
     @notice User can stake tokens
     @param _amount amount of tokens to stake
     */
-    function stake(uint _amount) external updateReward(msg.sender) {
+    function stake(uint _amount) external nonReentrant updateReward(msg.sender) {
         require(_amount > 0, "amount = 0");
         stakingToken.transferFrom(msg.sender, address(this), _amount);
         lastStake[msg.sender] = block.timestamp;
-        lastUnlockedStake[msg.sender] = block.timestamp + lockDuration;
         balanceOf[msg.sender] += _amount;
         totalSupply += _amount;
-
         emit Staked(msg.sender, _amount);
     }
 
@@ -118,18 +107,19 @@ contract StakingRewards{
      * @param _amount amount of tokens to withdraw
      */
     
-    function withdraw(uint256 _amount) external updateReward(msg.sender){
-        require(_amount > 0, "amount = 0");
-        require(balanceOf[msg.sender] > _amount, "Low Balance");
-        _startCooldownTimer(msg.sender);
-        require(block.timestamp > _lastWithdrawalTime[msg.sender], "Timer not completed");   
+    function withdraw(uint256 _amount) external nonReentrant updateReward(msg.sender){
+        require(_amount > 0, "amount should be greater than zero");
+        require(balanceOf[msg.sender] >= _amount, "Low Balance");
+        require(_coolDownTime[msg.sender] > 0, "Set cooldown timer First");
+        uint256 cooldownStartTimestamp = _coolDownTime[msg.sender];       
+        require(block.timestamp > cooldownStartTimestamp + coolDownPeriod, "Timer not completed");   
         uint256 percentage;
         uint256 lastStakeTime = lastStake[msg.sender];
-        uint256 totalStakeBalance = balanceOf[msg.sender];
-        if((lastStakeTime + lockDuration) > block.timestamp){
+        uint256 totalStakeTime = lastStakeTime + lockDuration;
+        if(totalStakeTime > block.timestamp){
             //if last stake is locked
             uint256 timeStaked = block.timestamp - lastStakeTime;
-            percentage = (_amount * timeStaked)/lastUnlockedStake[msg.sender];
+            percentage = (_amount * timeStaked)/totalStakeTime;
             uint256 remaining = _amount - percentage;
             stakingToken.transfer(owner, percentage);
             stakingToken.transfer(msg.sender, remaining);
@@ -141,9 +131,7 @@ contract StakingRewards{
         } 
         balanceOf[msg.sender] -= _amount;
         totalSupply -= _amount;
-       
-        isWithdrawn[msg.sender] = false;
-        _lastWithdrawalTime[msg.sender] = 0;
+        _coolDownTime[msg.sender] = 0;
         emit Withdrawn(msg.sender, _amount);
 
     }
@@ -162,7 +150,7 @@ contract StakingRewards{
     /**
      * @notice User can claim all the reward tokens 
      */
-    function claim() public updateReward(msg.sender){
+    function claim() public nonReentrant updateReward(msg.sender){
         uint256 totalAccumlatedRewards = rewards[msg.sender];               
             if (totalAccumlatedRewards > 0) {
                 rewards[msg.sender] = 0;
@@ -177,16 +165,20 @@ contract StakingRewards{
                 );
             }
     }
-    
+
     /**
-     * @notice set cooldown timer
-     * @param _account account address
+     * @notice It returns reward Per token value
      */
-    function _startCooldownTimer(address _account) internal {
-        if(isWithdrawn[_account] == false){
-         _lastWithdrawalTime[_account] = block.timestamp + coolDownPeriod;
-         isWithdrawn[_account] = true;
+    function rewardPerToken() public view returns (uint) {
+        if (totalSupply == 0) {
+            return rewardPerTokenStored;
         }
+        return
+            rewardPerTokenStored +
+            (rewardRate * (block.timestamp - updatedAt) * 1e18) /
+            totalSupply;
     }
+    
+    
 
 }

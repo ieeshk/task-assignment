@@ -109,6 +109,18 @@ contract StakingRewards{
     //     _;
     // }
 
+    // /**
+    //  * @notice set cooldown timer
+    //  * @param _account account address
+    //  */
+    // function _startCooldownTimer(address _account) internal {
+    //     if(isWithdrawn[_account] == false){
+    //      _lastWithdrawalTime[_account] = block.timestamp + coolDownPeriod;
+    //      //console.log("last withdraw in cooldown timer", )
+    //      isWithdrawn[_account] = true;
+    //     }
+    // }
+
     // modifier addReward() {
     //         uint256 timeGap = block.timestamp - lastWithdrawTime;
     //         uint256 totalRewardsAdded = rewardRate * 1e18 * timeGap;
