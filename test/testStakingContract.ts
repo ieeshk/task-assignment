@@ -37,7 +37,7 @@ describe("Reward testcase", () => {
     RewardToken = await ethers.getContractFactory("DONUTToken", owner);
     rewardToken = await RewardToken.deploy();
     rewardToken.deployed();
-    stakingContract = await ethers.getContractFactory("StakingRewards", owner);
+    stakingContract = await ethers.getContractFactory("StakingRewardsNew", owner);
     stakingPool = await stakingContract.deploy(stakingToken.address, rewardToken.address);
     stakingPool.deployed();
     transferAmount = BigNumber.from("1000000000000000000000");
@@ -59,6 +59,7 @@ it("Stake tokens and check balance ", async function () {
     
     await stakingPool.connect(owner).stake(transferAmount);
     await forward(1000);
+    console.log("1");
 
     //Earn rewards for 4 tokens per second for 1000 seconds
     const earnedAmount =await stakingPool.connect(owner).earned(owner.address)
@@ -104,6 +105,7 @@ it("Stake tokens, then withdraw & check reward tokens received ", async function
 
 });
 
+
 it("Check cooldown period ", async function () {
     
     await stakingPool.connect(owner).stake(transferAmount);
@@ -121,6 +123,8 @@ it("Check cooldown period ", async function () {
 
 
 });
+
+
 
 });
 });
