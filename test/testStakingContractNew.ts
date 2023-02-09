@@ -88,6 +88,38 @@ it("Stake tokens and check balance ", async function () {
 
 });
 
+it("Stake tokens from different accounts and check earned rewards ", async function () {
+     
+  const rewardRate = await stakingPool.rewardRate();
+  
+  await stakingPool.connect(owner).stake(transferAmount);
+  await forward(100);
+  
+  await stakingToken.connect(owner).transfer(user1.address, transferAmount);
+  await stakingToken.connect(user1).approve(stakingPool.address, transferAmount);
+
+  await stakingPool.connect(user1).stake(transferAmount);
+
+  await forward(300);
+
+  //For first 100 seconds owner gets Entire Rewads. 
+  //Then for next 300 seconds rewards are split between owner and user1
+  //let ownerReward = (Number((rewardRate * 100)).add(Number(rewardRate * 300)/2)); 
+  
+  expect(await stakingPool.connect(owner).earned(owner.address)).to.equal(rewardRate.mul(253))
+
+  //console.log("earned amount by owner", earnedAmountOwner);
+
+  await stakingPool.connect(user1).earned(user1.address)
+
+  //console.log("earned amount by user1", earnedAmountUser);
+  expect(BigInt( await stakingPool.connect(user1).earned(user1.address)
+  )).to.equal(BigInt(rewardRate) * BigInt(150));
+  
+  
+
+});
+
 it("Stake tokens, then withdraw without penalty", async function () {
     
     await stakingPool.connect(owner).stake(transferAmount);
