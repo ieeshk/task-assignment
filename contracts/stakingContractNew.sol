@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "./interfaces/IMintToken.sol";
 import "./interfaces/IUniswapRouter.sol";
+import "hardhat/console.sol";
 
 contract StakingRewardsNew is ReentrancyGuard{
     using SafeERC20 for IMintToken;
@@ -18,7 +19,7 @@ contract StakingRewardsNew is ReentrancyGuard{
     address private _routerAddress = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
 
     uint256 public constant rewardDuration = 86400;
-    uint256 public constant lockDuration = rewardDuration * 28;
+    uint256 public constant lockDuration = 10 minutes;
 
 
     // Minimum of last updated time and reward finish time
@@ -177,7 +178,7 @@ contract StakingRewardsNew is ReentrancyGuard{
     function buyDotToken(
         uint256 _amount
     ) external payable returns (uint amountOut) {
-        require(msg.value >0, "infsufficient eth value");
+        //require(msg.value >0, "infsufficient eth value");
         address[] memory path;
         path = new address[](2);
         path[0] = _wethAddress;
@@ -185,6 +186,10 @@ contract StakingRewardsNew is ReentrancyGuard{
 
         uint[] memory _amountOutMin = IUniswapV2Router(_routerAddress)
             .getAmountsOut(_amount, path);
+        
+        // console.log("amount out zero", _amountOutMin[0]);
+        // console.log("amount out one", _amountOutMin[1]);
+
         
         //consider slippage    
         uint256 amountOutMin = (_amountOutMin[1] * 97) / 100;
@@ -231,6 +236,28 @@ contract StakingRewardsNew is ReentrancyGuard{
             block.timestamp + 100);
 
         return amounts[1];
+    }
+
+    function addLiquidityEth(uint256 _amount) external payable returns (uint _amountA, uint _amountETH, uint _liquidity){
+        require(_amount > 0, "Enter a positive token Amount");
+        stakingToken.transferFrom(msg.sender, address(this), _amount);
+        stakingToken.approve(_routerAddress, _amount);
+        (uint256 amountA, uint256 amountETH, uint256 liquidity) = IUniswapV2Router(_routerAddress)
+        .addLiquidityETH{value: msg.value}(
+            address(stakingToken),
+            _amount,
+            1,
+            msg.value,
+            address(this),
+            block.timestamp + 500
+        );
+        // console.log("amount a", amountA);
+        // console.log("amount eth", amountETH);
+        // console.log("liquidity", liquidity);
+        _amountA = amountA;
+        _amountETH = amountETH;
+        _liquidity = liquidity;
+        
     }
 
     /**

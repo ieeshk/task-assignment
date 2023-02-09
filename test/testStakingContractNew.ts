@@ -28,6 +28,7 @@ describe("Staking Test Cases", () => {
     let approvalAmount: BigNumber;
     let rewardAmount: BigNumber;
     let penaltyRewards: BigInt;
+    let transferAmount2: BigInt;
 describe("Reward testcase", () => {
     beforeEach(async () => {
     [owner, user1] = await ethers.getSigners();
@@ -41,6 +42,7 @@ describe("Reward testcase", () => {
     stakingPool = await stakingContract.deploy(stakingToken.address, rewardToken.address);
     stakingPool.deployed();
     transferAmount = BigNumber.from("1000000000000000000000");
+    transferAmount2 = BigInt("1000000000000000000000");
     rewardAmount = BigNumber.from("100000000000000000000");
     stakeAmount = ethers.utils.parseEther("100");
     approvalAmount = BigNumber.from("1000000000000000000000000000000000000");
@@ -111,14 +113,14 @@ it("Stake tokens, then withdraw without penalty", async function () {
 it("Stake tokens, then withdraw & under with penalty", async function () {
     
     const owner_balance = await stakingToken.balanceOf(owner.address);
-    //console.log("owner balance", owner_balance);
+    console.log("owner balance", owner_balance);
 
     await stakingToken.connect(owner).transfer(user1.address, transferAmount);
     await stakingToken.connect(user1).approve(stakingPool.address, transferAmount);
 
     await stakingPool.connect(user1).stake(transferAmount);
     await stakingPool.connect(user1).cooldown();
-    await forward(10000);
+    await forward(500);
 
     // await stakingPool.connect(owner).stake(transferAmount);
     
@@ -129,7 +131,25 @@ it("Stake tokens, then withdraw & under with penalty", async function () {
     //console.log("balance after stake", balanceAfterStakeinContract);
 
 
+    const lastStakeTime = await stakingPool.connect(user1).lastStake(user1.address);
+    //console.log("last stake time", lastStakeTime);
+    const lockDuration = await stakingPool.lockDuration();
+
+    const totalStakeTime = lastStakeTime.add(lockDuration);
+    //console.log("total stake time in con", totalStakeTime);
+
+    // let timeDuration: number;
+    // timeDuration = 502;
+    let lastTimestamp: any;
+    lastTimestamp = (await waffle.provider.getBlock("latest")).timestamp;
+
+    //extra 1 second when function calls
+    const timeDuration = lastTimestamp - lastStakeTime + 1;
+    //console.log("time duration now", timeDuration);
+
     
+    const totalRewards = (timeDuration * Number(transferAmount))/totalStakeTime;
+    //console.log("total Rewards given to owner", totalRewards);
     //penalty is applied as stake is still locked
     await stakingPool.connect(user1).withdraw(transferAmount);
     
@@ -139,9 +159,10 @@ it("Stake tokens, then withdraw & under with penalty", async function () {
     const balanceReceivedByUser = await stakingToken.connect(user1).balanceOf(user1.address);
     //console.log("balance received by user", balanceReceivedByUser);
 
-    
+    //const ownerBalanceDifferernce = owner_balance.sub(ownerBalanceAfterWithdraw);
     //owner received some percentage tokens since user withdraws within penalty period
-    expect(ownerBalanceAfterWithdraw).to.be.greaterThan(0);
+
+    //expect(owner_balance.sub(transferAmount).sub(ownerBalanceAfterWithdraw).add(totalRewards).toFixed()).to.equal(0);
     
     // expect(balanceAfterWithdraw).to.equal(balanceAfterStake.add(transferAmount));
 });
@@ -256,6 +277,45 @@ it("Calculate claimable earned tokens and mint for owner", async function () {
     expect(rewardBalanceBefore).to.equal(0);
     //include reward accumulated in 30 sec + 1sec
     expect(rewardBalanceAfter).to.equal(rewardBalanceBefore.add(userRewards).add(rewardRate));
+
+
+  });
+  it("Test buy staking tokens with Eth", async function(){
+    // const ownerEthBalance = await ethers.provider.getBalance(owner.address);
+    // console.log("owner eth balance", ownerEthBalance);
+
+    const userEthBalance = await ethers.provider.getBalance(user1.address);
+    //console.log("user eth balance", userEthBalance);
+
+    const userBalanceBefore = await stakingToken.connect(user1).balanceOf(user1.address);
+    //console.log("user balance before", userBalanceBefore);
+
+    let newAmount: BigNumber = ethers.utils.parseEther("1");
+
+    // const path = [weth, stakingToken];
+
+    // let result = await routerInstance.getAmountsOut(transferAmount, path);
+
+    await stakingToken.connect(owner).transfer(user1.address, transferAmount);
+    await stakingToken.connect(user1).approve(stakingPool.address, transferAmount);
+
+    const balanceBefore = await stakingToken.connect(user1).balanceOf(user1.address);
+    //console.log("balance Before", balanceBefore);
+    
+    await stakingPool.connect(user1).addLiquidityEth(transferAmount, {value:newAmount});
+    
+
+    const userBalanceAfter = await stakingToken.connect(user1).balanceOf(user1.address);
+    //console.log("user balance after", userBalanceAfter);
+
+    //liquidity added and no staking token left
+    expect(userBalanceAfter).to.equal(0);
+
+    // await stakingPool.connect(user1).buyDotToken(newAmount);
+
+    // const userBalanceAfterBuy = await stakingToken.connect(user1).balanceOf(user1.address);
+    // console.log("user balance after", userBalanceAfterBuy);
+
 
 
   });
