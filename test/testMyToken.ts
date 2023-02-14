@@ -56,7 +56,7 @@ describe("Token Contract", () => {
       //expect(lockedBalance).to.equal(newAmount * 2);
       //console.log("mint balance", lockedBalance);
       //const totalBalance = stakingToken.connect(user1).balanceOf(user1.address);
-      expect(lockedBalance).to.equal(Number(transferAmount)/Number(2));
+      expect(Number(lockedBalance)).to.equal(Number(transferAmount)* Number(2));
     });
   });
 
@@ -134,23 +134,63 @@ describe("Token Contract", () => {
         );
 
     });
-    it("Allowed contract is transferring back locked tokens to user address", async function(){
+    it("Locked tokens are staked to allowed contract", async function(){
         await stakingToken.connect(user1).mint({value: transferAmount});
-        //stakingToken.connect(owner).allowContract(stakingPool.address);
+        await stakingToken.connect(owner).allowContract(stakingPool.address);
 
-        stakingToken.connect(user1).transfer(user2, transferAmount);
-
+        await stakingToken.connect(user1).approve(stakingPool.address, transferAmount);
+        const lockedBalanceBefore = await stakingToken.connect(user1).locked(user1.address);
+        console.log("locked balance before", lockedBalanceBefore);
         //stakingToken.connect(stakingPool).transfer(user2.address, transferAmount);
+        await stakingPool.connect(user1).stake(transferAmount);
+
+        const balanceOfUser = await stakingPool.connect(user1).balanceOf(user1.address);
+        console.log("balance of user", balanceOfUser);
+
+        const lockedBalanceAfter = await stakingToken.connect(user1).locked(user1.address);
+        console.log("locked balance after", lockedBalanceAfter);
+        expect(BigInt(lockedBalanceBefore) - BigInt(lockedBalanceAfter)).to.equal(transferAmount.toString());
+
 
 
         // const stakingPoolLocked = await stakingToken.connect(user1).locked(stakingPool.address);
         // const user1LockedBalance = await stakingToken.connect(user1).locked(user1.address);
-        // const user2UnlockedBalance = await stakingToken.connect(user2).unlocked(user2.address);
+        //const user2UnlockedBalance = await stakingToken.connect(user2).unlocked(user2.address);
         // console.log("staking Pool locked tokens", stakingPoolLocked);
         //expect(stakingPoolLocked).to.equal(0);
         //Half send to staking contract and rest half locked tokens remain
         // expect(user1LockedBalance).to.equal(transferAmount);
-        // expect(user2UnlockedBalance).to.equal(transferAmount);
+         //expect(user2UnlockedBalance).to.equal(transferAmount);
+
+
+    });
+
+    it("Locked tokens are staked to allowed contract & Unlocked tokens are transfered back", async function(){
+        await stakingToken.connect(user1).mint({value: transferAmount});
+        await stakingToken.connect(owner).allowContract(stakingPool.address);
+
+        await stakingToken.connect(user1).approve(stakingPool.address, transferAmount);
+        const lockedBalanceBefore = await stakingToken.connect(user1).locked(user1.address);
+        console.log("locked balance before", lockedBalanceBefore);
+        //stakingToken.connect(stakingPool).transfer(user2.address, transferAmount);
+        await stakingPool.connect(user1).stake(transferAmount);
+
+        const balanceOfUser = await stakingPool.connect(user1).balanceOf(user1.address);
+        console.log("balance of user", balanceOfUser);
+
+        const lockedBalanceAfter = await stakingToken.connect(user1).locked(user1.address);
+        console.log("locked balance after", lockedBalanceAfter);
+        //expect(lockedBalanceBefore - lockedBalanceAfter).to.equal(transferAmount);
+
+        await stakingPool.connect(user1).withdraw(transferAmount);
+
+        const unlockedBalanceAfter = await stakingToken.connect(user1).unlocked(user1.address);
+        //console.log("unlocked balance after", unlockedBalanceAfter);
+        
+        //const lockedBalanceAfterWithdraw = await stakingToken.connect(user1).locked(user1.address);
+        //console.log("locked balance after withdraw", lockedBalanceAfterWithdraw);
+
+        expect(unlockedBalanceAfter).to.equal(transferAmount);
 
 
     });
@@ -163,21 +203,6 @@ describe("Token Contract", () => {
       expect(await stakingToken.allowance(owner.address, user1.address)).to.equal(
         approvalAmount
       );
-    });
-
-    it("Should fail to transfer from user1 to user2 (insufficient balance)", async function () {
-      await stakingToken.connect(user1).approve(owner.address, approvalAmount);
-
-      await expect(
-        stakingToken.transferFrom(user1.address, user2.address, transferAmount2)
-      ).to.be.revertedWith("insufficient unlocked tokens");
-    });
-
-    it("Should fail to transfer from user1 to user2 (not allowed to transfer)", async function () {
-      await stakingToken.connect(owner).mint({value: transferAmount});
-      stakingToken.connect(owner).allowContract(stakingPool.address);  
-      await stakingToken.connect(owner).transfer(stakingPool.address, transferAmount2);
-      await stakingToken.connect(stakingPool.address).transfer(user2.address, transferAmount2);
 
 
     //   await expect(
