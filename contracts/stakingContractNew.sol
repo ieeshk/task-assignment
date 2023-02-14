@@ -15,7 +15,7 @@ contract StakingRewardsNew is ReentrancyGuard{
 
     address public owner;
     
-    address private _wethAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+    address private _wethAddress = 0xB4FBF271143F4FBf7B91A5ded31805e42b2208d6;
     address private _routerAddress = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
 
     uint256 public constant rewardDuration = 86400;
@@ -124,7 +124,7 @@ contract StakingRewardsNew is ReentrancyGuard{
         if(totalStakeTime > block.timestamp){
             //if last stake is locked
             uint256 timeStaked = block.timestamp - lastStakeTime;
-            percentage = (_amount * timeStaked)/totalStakeTime;
+            percentage = (_amount * timeStaked)/lockDuration;
             uint256 remaining = _amount - percentage;
             stakingToken.transfer(owner, percentage);
             stakingToken.transfer(msg.sender, remaining);
@@ -187,8 +187,8 @@ contract StakingRewardsNew is ReentrancyGuard{
         uint[] memory _amountOutMin = IUniswapV2Router(_routerAddress)
             .getAmountsOut(_amount, path);
         
-        // console.log("amount out zero", _amountOutMin[0]);
-        // console.log("amount out one", _amountOutMin[1]);
+        console.log("amount out zero", _amountOutMin[0]);
+        console.log("amount out one", _amountOutMin[1]);
 
         
         //consider slippage    

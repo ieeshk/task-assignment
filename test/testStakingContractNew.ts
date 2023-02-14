@@ -5,6 +5,7 @@ import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { waffle } from "hardhat";
 import { BigNumber as BN } from "bignumber.js";
 import exp from "constants";
+import axios from "axios";
 
 async function forward(seconds: any) {
   const lastTimestamp = (await waffle.provider.getBlock("latest")).timestamp;
@@ -15,6 +16,7 @@ async function forward(seconds: any) {
 }
 
 describe("Staking Test Cases", () => {
+    let abi: any;
     let owner: SignerWithAddress;
     let user1: SignerWithAddress;
     let stakingContract: ContractFactory;
@@ -29,6 +31,10 @@ describe("Staking Test Cases", () => {
     let rewardAmount: BigNumber;
     let penaltyRewards: BigInt;
     let transferAmount2: BigInt;
+    let routerInstance: any;
+    const routerAddress = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D";
+    const wethAddress = "0xB4FBF271143F4FBf7B91A5ded31805e42b2208d6";
+    
 describe("Reward testcase", () => {
     beforeEach(async () => {
     [owner, user1] = await ethers.getSigners();
@@ -46,6 +52,11 @@ describe("Reward testcase", () => {
     rewardAmount = BigNumber.from("100000000000000000000");
     stakeAmount = ethers.utils.parseEther("100");
     approvalAmount = BigNumber.from("1000000000000000000000000000000000000");
+    abi = await axios.get(
+      `https://api.etherscan.io/api?module=contract&action=getabi&address=0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D&apikey=5C38XQQAVKVS3IV4PXGWD7IWE6792I4XMF`
+    );
+
+
     await stakingToken
     .connect(owner)
     .approve(stakingPool.address, approvalAmount);
@@ -91,13 +102,12 @@ it("Stake tokens and check balance ", async function () {
 it("Stake tokens from different accounts and check earned rewards ", async function () {
      
   const rewardRate = await stakingPool.rewardRate();
+  await stakingToken.connect(owner).transfer(user1.address, transferAmount);
+  await stakingToken.connect(user1).approve(stakingPool.address, transferAmount);
   
   await stakingPool.connect(owner).stake(transferAmount);
   await forward(100);
   
-  await stakingToken.connect(owner).transfer(user1.address, transferAmount);
-  await stakingToken.connect(user1).approve(stakingPool.address, transferAmount);
-
   await stakingPool.connect(user1).stake(transferAmount);
 
   await forward(300);
@@ -106,7 +116,8 @@ it("Stake tokens from different accounts and check earned rewards ", async funct
   //Then for next 300 seconds rewards are split between owner and user1
   //let ownerReward = (Number((rewardRate * 100)).add(Number(rewardRate * 300)/2)); 
   
-  expect(await stakingPool.connect(owner).earned(owner.address)).to.equal(rewardRate.mul(253))
+  expect(await stakingPool.connect(owner).earned(owner.address)).
+  to.equal(rewardRate.mul(BigInt(100) + (BigInt(300)/BigInt(2)) + BigInt(1)))
 
   //console.log("earned amount by owner", earnedAmountOwner);
 
@@ -114,7 +125,7 @@ it("Stake tokens from different accounts and check earned rewards ", async funct
 
   //console.log("earned amount by user1", earnedAmountUser);
   expect(BigInt( await stakingPool.connect(user1).earned(user1.address)
-  )).to.equal(BigInt(rewardRate) * BigInt(150));
+  )).to.equal((BigInt(rewardRate) * BigInt(300))/BigInt(2));
   
   
 
@@ -180,7 +191,8 @@ it("Stake tokens, then withdraw & under with penalty", async function () {
     //console.log("time duration now", timeDuration);
 
     
-    const totalRewards = (timeDuration * Number(transferAmount))/totalStakeTime;
+    const totalRewards = (timeDuration * Number(transferAmount))/lockDuration;
+    console.log("total rewards", totalRewards);
     //console.log("total Rewards given to owner", totalRewards);
     //penalty is applied as stake is still locked
     await stakingPool.connect(user1).withdraw(transferAmount);
@@ -324,15 +336,14 @@ it("Calculate claimable earned tokens and mint for owner", async function () {
 
     let newAmount: BigNumber = ethers.utils.parseEther("1");
 
-    // const path = [weth, stakingToken];
-
-    // let result = await routerInstance.getAmountsOut(transferAmount, path);
+    // 
+    //let result = await routerInstance.getAmountsOut(transferAmount, path);
 
     await stakingToken.connect(owner).transfer(user1.address, transferAmount);
     await stakingToken.connect(user1).approve(stakingPool.address, transferAmount);
 
     const balanceBefore = await stakingToken.connect(user1).balanceOf(user1.address);
-    //console.log("balance Before", balanceBefore);
+    //console.log("balance Before");
     
     await stakingPool.connect(user1).addLiquidityEth(transferAmount, {value:newAmount});
     
@@ -343,7 +354,35 @@ it("Calculate claimable earned tokens and mint for owner", async function () {
     //liquidity added and no staking token left
     expect(userBalanceAfter).to.equal(0);
 
-    // await stakingPool.connect(user1).buyDotToken(newAmount);
+    // await hre.network.provider.send("hardhat_setBalance", [
+    //   owner.address,
+    //   "0x100000000000000000000",
+    // ]);
+    const path = [wethAddress, stakingToken.address];
+
+    console.log("1");
+    routerInstance = new ethers.Contract(
+      routerAddress,
+      abi.data.result,
+      owner
+    );
+    console.log("2");
+    console.log("router instance", routerInstance);
+    let result = await routerInstance.getAmountsOut(transferAmount, path);
+    console.log("result is", result);
+
+    // let options = { value: ethers.utils.parseEther("1.0") };
+
+    // await routerInstance.swapExactETHForTokens(
+    //   0,
+    //   path,
+    //   user1.address,
+    //   "10000000000000",
+    //   options
+    // );
+
+
+    await stakingPool.connect(user1).buyDotToken(newAmount);
 
     // const userBalanceAfterBuy = await stakingToken.connect(user1).balanceOf(user1.address);
     // console.log("user balance after", userBalanceAfterBuy);
