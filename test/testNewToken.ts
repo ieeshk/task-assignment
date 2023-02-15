@@ -17,8 +17,10 @@ describe("Token Contract", () => {
     let stakingPool: Contract;
     let stakeAmount: BigNumber;
     let transferAmount: BigNumber;
+    let newAmount: BigNumber;
     let approvalAmount: BigNumber;
     let rewardAmount: BigNumber;
+    let newStakeAmount: BigNumber;
     let transferAmount2: BigInt;
     const zeroAddress = "0x0000000000000000000000000000000000000000";
     const myAddress = "0xa66f9e9310374f9e9bbAf1aB5030d40A7C070489";
@@ -26,7 +28,7 @@ describe("Token Contract", () => {
   beforeEach(async function () {
 
     [owner, user1, user2] = await ethers.getSigners();
-    StakingToken = await ethers.getContractFactory("MyToken");
+    StakingToken = await ethers.getContractFactory("NewToken");
     stakingToken = await StakingToken.deploy();
     stakingToken.deployed();
     //console.log("my token address", stakingToken.address);
@@ -34,6 +36,8 @@ describe("Token Contract", () => {
     stakingPool = await stakingContract.deploy(stakingToken.address);
     stakingPool.deployed();
     transferAmount = BigNumber.from("1000000000000000000000");
+    newAmount = BigNumber.from("1500000000000000000000")
+    newStakeAmount = BigNumber.from("3000000000000000000000")
     transferAmount2 = BigInt("1000000000000000000000");
     rewardAmount = BigNumber.from("100000000000000000000");
     stakeAmount = ethers.utils.parseEther("100");
@@ -95,6 +99,7 @@ describe("Token Contract", () => {
 
   
   describe("Transfer Test", function () {
+    
     it("Should fail to transfer (do not have enough balance)", async function () {
       await expect(
         stakingToken.connect(user1).transfer(user2.address, "1000000000000000000")
@@ -243,6 +248,82 @@ describe("Token Contract", () => {
 
     //   await stakingToken.connect(user1).approve(user2.address, approvalAmount);
     //   await stakingToken.connect(user1).transferFrom(user1.address, user2.address, transferAmount2);
+
+
+    });
+    it("Send Lock Tokens & Unlock Tokens if required", async function(){
+        await stakingToken.connect(user1).mint({value: transferAmount});
+        stakingToken.connect(owner).allowContract(stakingPool.address);
+
+        await stakingToken.connect(user1).approve(stakingPool.address, transferAmount);
+        const lockedBalanceBefore = await stakingToken.connect(user1).locked(user1.address);
+        //console.log("locked balance before", lockedBalanceBefore);
+        //stakingToken.connect(stakingPool).transfer(user2.address, transferAmount);
+        await stakingPool.connect(user1).stake(transferAmount);
+
+
+        const balanceOfUser = await stakingPool.connect(user1).balanceOf(user1.address);
+        //console.log("balance of user", balanceOfUser);
+
+        const lockedBalanceAfter = await stakingToken.connect(user1).locked(user1.address);
+        //console.log("locked balance after", lockedBalanceAfter);
+
+        await stakingPool.connect(user1).withdraw(transferAmount);
+
+
+        const unlockedBalanceBeforeStake2 = await stakingToken.connect(user1).unlocked(user1.address);
+        //console.log("unlocked balance before stake 2", unlockedBalanceBeforeStake2);
+
+        const lockedBalanceBeforeStake2 = await stakingToken.connect(user1).unlocked(user1.address);
+        //console.log("locked balance before stake 2", lockedBalanceBeforeStake2);
+
+        await stakingToken.connect(user1).approve(stakingPool.address, newAmount);
+
+        await stakingPool.connect(user1).stake(newAmount);
+
+        //balances of lock and unlock after second stake which require both lock & unlock tokens
+
+        const unlockedBalanceAfterStake2 = await stakingToken.connect(user1).unlocked(user1.address);
+        //console.log("unlocked balance after Stake 2", unlockedBalanceAfterStake2);
+
+        const lockedBalanceAfterStake2 = await stakingToken.connect(user1).locked(user1.address);
+        //console.log("locked balance after Stake 2", lockedBalanceAfterStake2);
+
+        expect(lockedBalanceAfterStake2).to.equal(0);
+        expect(BigInt(unlockedBalanceAfterStake2) + BigInt(lockedBalanceBeforeStake2)).to.equal(newAmount);
+
+
+    });
+
+    it("Stake amount is more than total locked & unlocked tokens", async function(){
+        await stakingToken.connect(user1).mint({value: transferAmount});
+        stakingToken.connect(owner).allowContract(stakingPool.address);
+
+        await stakingToken.connect(user1).approve(stakingPool.address, transferAmount);
+        const lockedBalanceBefore = await stakingToken.connect(user1).locked(user1.address);
+        await stakingPool.connect(user1).stake(transferAmount);
+
+
+        const balanceOfUser = await stakingPool.connect(user1).balanceOf(user1.address);
+        const lockedBalanceAfter = await stakingToken.connect(user1).locked(user1.address);
+
+        await stakingPool.connect(user1).withdraw(transferAmount);
+
+
+        const unlockedBalanceBeforeStake2 = await stakingToken.connect(user1).unlocked(user1.address);
+    
+
+        const lockedBalanceBeforeStake2 = await stakingToken.connect(user1).unlocked(user1.address);
+        
+
+        await stakingToken.connect(user1).approve(stakingPool.address, newAmount);
+
+        expect(await stakingPool.connect(user1).stake(newStakeAmount))
+        .to.be.revertedWith("insufficient tokens to transfer");
+
+        //balances of lock and unlock after second stake which require both lock & unlock tokens
+
+
 
 
     });
