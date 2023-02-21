@@ -86,7 +86,7 @@ contract NewToken is Ownable{
     public
     returns (bool success)
   {
-    allowance[msg.sender][_spender] = _value;
+    allowance[msg.sender][_spender] += _value;
     emit Approval(msg.sender, _spender, _value);
     return true;
   }

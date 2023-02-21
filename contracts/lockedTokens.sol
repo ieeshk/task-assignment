@@ -45,20 +45,23 @@ contract lockedTokens {
     function stake(uint _amount) external {
         require(_amount > 0, "amount = 0");
         
-        stakingToken.transferFrom(msg.sender, address(this), _amount);
         balanceOf[msg.sender] += _amount;
+        totalSupply += _amount;
+        stakingToken.transferFrom(msg.sender, address(this), _amount);
+        
         // userBalanceStatus[msg.sender].lockedTokens += _amount;
         // userBalanceStatus[msg.sender].totalTokens += _amount;
-        totalSupply += _amount;
+        
     }
     
     function withdraw(uint _amount) external {
         require(_amount > 0, "amount = 0");
         require(balanceOf[msg.sender] >= _amount, "Not enough tokens to withdraw");
         //require(userBalanceStatus[msg.sender].lockedToken >= _amount, "not enough Locked tokens");
+        
         balanceOf[msg.sender] -= _amount;
         totalSupply -= _amount;
-        stakingToken.transfer(msg.sender, _amount);
+        stakingToken.transfer(msg.sender, _amount);   
         //userBalanceStatus[msg.sender].lockedTokens -= _amount;
         //userBalanceStatus[msg.sender].unlockedTokens += _amount;
     }

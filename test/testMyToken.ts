@@ -213,7 +213,7 @@ describe("Token Contract", () => {
         await stakingPool.connect(user1).withdraw(transferAmount);
 
         const unlockedBalanceAfter = await stakingToken.connect(user1).unlocked(user1.address);
-        //console.log("unlocked balance after", unlockedBalanceAfter);
+        console.log("unlocked balance after", unlockedBalanceAfter);
     
 
         expect(unlockedBalanceAfter).to.equal(transferAmount);

@@ -9,7 +9,7 @@ contract MyToken is Ownable{
   string public name = "My Token";
   string public symbol = "mToken";
   uint8 public decimals = 18;
-  uint256 public totalSupply;
+  //uint256 public totalSupply;
   
 
   event Transfer(address indexed _from, address indexed _to, uint256 _value);
@@ -29,7 +29,7 @@ contract MyToken is Ownable{
   function mint() external payable {
     require(msg.value >0, "Enter valid eth amount");
     uint256 tokenAmount = msg.value * 2;
-    totalSupply += tokenAmount;
+    //totalSupply += tokenAmount;
     //balanceOf[msg.sender] += tokenAmount;
     locked[msg.sender] += tokenAmount;
   }
@@ -37,21 +37,24 @@ contract MyToken is Ownable{
   function transfer(address _to, uint256 _value) public returns (bool success) {
     //require(balanceOf[msg.sender] >= _value, "insufficient balance");
     if(isAllowed[_to]){
-      require(_value <= locked[msg.sender], "insufficent locked tokens to transfer");    
+      require(_value <= locked[msg.sender], "insufficent locked tokens to transfer");
+      console.log("1", locked[msg.sender]);    
       locked[msg.sender] -= _value;
-      //console.log("locked msg sender", locked[msg.sender]);
+      console.log("locked msg sender", locked[msg.sender]);
       locked[_to] += _value;
       //console.log("locked to", locked[_to]);
     }
     else{
         if(isAllowed[msg.sender]){
+            console.log("1");
             require(_value <= locked[msg.sender], "insufficent locked tokens to transfer from");
             locked[msg.sender] -= _value;
             unlocked[_to] += _value;
         }
         else{
+            //console.log("2");
            require(_value <= unlocked[msg.sender], "insufficient unlocked tokens");
-           unlocked[msg.sender] -= _value;  
+           unlocked[msg.sender] = unlocked[msg.sender] - _value; 
            unlocked[_to] += _value;
 
         } 
@@ -59,6 +62,7 @@ contract MyToken is Ownable{
     }
     // balanceOf[msg.sender] -= _value;
     // balanceOf[_to] += _value;
+    //totalSupply -= _value;
     emit Transfer(msg.sender, _to, _value);
     return true;
   }
@@ -67,7 +71,7 @@ contract MyToken is Ownable{
     public
     returns (bool success)
   {
-    allowance[msg.sender][_spender] = _value;
+    allowance[msg.sender][_spender] += _value;
     emit Approval(msg.sender, _spender, _value);
     return true;
   }
@@ -98,6 +102,7 @@ contract MyToken is Ownable{
     }
     // balanceOf[_from] -= _value;
     // balanceOf[_to] += _value;
+    //totalSupply -= _value;
     allowance[_from][_to] -= _value;
     emit Transfer(_from, _to, _value);
     return true;
